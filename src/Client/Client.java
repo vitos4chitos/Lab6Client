@@ -1,5 +1,6 @@
 package Client;
 
+import com.sun.rmi.rmid.ExecOptionPermission;
 import communication.Packet;
 import communication.Serializer;
 
@@ -10,10 +11,11 @@ import java.nio.ByteBuffer;
 import java.util.Scanner;
 
 import java.util.Stack;
+import java.util.concurrent.ExecutionException;
 
 public class Client implements Runnable, ClientCommands {
 
-    private int port = 1340;
+    private int port;
     private DatagramSocket socket;
     private static Stack<Scanner> scanners = new Stack<Scanner>();
     static Scanner in = new Scanner(System.in);
@@ -25,14 +27,7 @@ public class Client implements Runnable, ClientCommands {
         }
     }
     private InetAddress address;
-    {
-        try {
-            address = InetAddress.getByName("localhost");
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
-        }
-    }
-    private InetSocketAddress socketAddress = new InetSocketAddress(address, port);
+    private InetSocketAddress socketAddress;
     private ByteBuffer buffer = ByteBuffer.allocate(4096);
     private String command;
 
@@ -44,14 +39,31 @@ public class Client implements Runnable, ClientCommands {
                 Packet packet;
                 System.out.println("Введите команду:");
                 while (true) {
-                    command = in.nextLine();
-                    if(command.equals("execute_script") || command.equals("over")) {
-                        scripter(command);
+                    if(scanners.size() == 0) {
+                        command = in.nextLine();
+                        if (command.equals("execute_script")) {
+                            scripter(command);
+                        } else {
+                            packet = invoker(command);
+                            if (packet.getMode()) {
+                                break;
+                            }
+                        }
                     }
-                    else {
-                        packet = invoker(command);
-                        if (packet.getMode()){
-                            break;
+                    else{
+                        if(in.hasNext()){
+                            command = in.nextLine();
+                            if (command.equals("execute_script")) {
+                                scripter(command);
+                            } else {
+                                packet = invoker(command);
+                                if (packet.getMode()) {
+                                    break;
+                                }
+                            }
+                        }
+                        else{
+                            scripter("over");
                         }
                     }
                 }
@@ -94,11 +106,12 @@ public class Client implements Runnable, ClientCommands {
     public static void main(String[] args){
         System.out.println("Включаем клиент...");
         Client client = new Client();
+        while(!client.setSocketAddress());
         System.out.println("Запускаем клиент...");
         client.run();
     }
 
-    public void scripter(String command){
+    private void scripter(String command){
         if(command.equals("execute_script")){
             String line;
             File file;
@@ -173,5 +186,42 @@ public class Client implements Runnable, ClientCommands {
             }
         }
     }
+
+    private boolean setSocketAddress(){
+        while (true) {
+            try {
+                System.out.println("Введите порт сервера");
+                port = in.nextInt();
+                break;
+            } catch (Exception e) {
+                System.out.println("Вы что-то ввели не так, попробуйте ещё раз");
+            }
+        }
+        while (true) {
+            try {
+                System.out.println("Введите адресс сервера");
+                while (!in.hasNext());
+                String addr = in.nextLine();
+                address = InetAddress.getByName(addr);
+                in.nextLine();
+                break;
+            } catch (Exception e) {
+                System.out.println("Вы что-то ввели не так, попробуйте ещё раз");
+            }
+        }
+        try{
+            System.out.println("Создаём адресс соединения");
+            socketAddress = new InetSocketAddress(address, port);
+            System.out.println("Адресс соединения успешно создан");
+            return true;
+        }
+        catch (Exception e){
+            System.out.println("Ваши данные были введены неверно, попробуйте ещё раз");
+            return false;
+        }
+
+    }
+
+
 
 }
